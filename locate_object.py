@@ -1,6 +1,7 @@
 from keras_yolo3.yolo import YOLO
 from PIL import Image
-from libs.utils import *
+from libs.utils import get_target_window, get_countertop, track_object
+from libs.draw import draw_target_window, draw_countertop_line, draw_text
 import cv2
 import numpy as np
 import yaml
@@ -13,6 +14,8 @@ with open("config.yml", 'r') as ymlfile:
     config = yaml.load(ymlfile)
 
 yolo = YOLO()
+
+# Connect to serial port
 bt = serial.Serial('/dev/rfcomm0', 19200)
 while True:
     in_data = bt.read_until().decode()
@@ -37,25 +40,47 @@ try:
         out = cv2.VideoWriter(video_name, video_fourcc, video_fps, video_size)
 
     first_centered = True
+    countertop_line_coords = [(0, 0), (0, 0)]
+    countertop_y_center = 0
+
     while True:
         return_value, frame = vid.read()
+
+        # Get countertop line
+        vals = get_countertop(frame, video_size[1])        
+        valid_line_found, tmp_coords, tmp_center = vals
+        if valid_line_found:
+            countertop_y_center = tmp_center
+        countertop_line_coords = tmp_coords
+
+        # Run image through YOLO
         image = Image.fromarray(frame)
         image, object_center = yolo.detect_image(image)
         image = np.asarray(image)
+
         # Add target zone to image
         target_window = get_target_window(*video_size)
+
+        # Replace bottom target zone line with countertop ave
+        target_window = (target_window[0], target_window[1],
+                         target_window[2], countertop_y_center)
+        
+        # Draw target zone and counter line
         image = draw_target_window(image, target_window, *video_size)
+        image = draw_countertop_line(image, countertop_line_coords)
+        
         # If object found
         if object_center is not None:
-            move_x, move_y = track_object(*object_center, target_window)
+            move_x, move_y, centered = track_object(*object_center, target_window)
             shoot = "0"
             # If object centered
-            if move_x == "0" and move_y == "0":
+            if centered:
                 shoot_delay = 3
                 # Restart countdown if object lost or decentered
                 if first_centered == True:
                     start_time = time.time()
                     first_centered = False
+                # Countdown to shoot
                 time_remaining = shoot_delay - int(time.time() - start_time)
                 if time_remaining > 0:
                     image = draw_text(image, str(time_remaining))
@@ -69,12 +94,14 @@ try:
             bt.flush()
         else:
             first_centered = True
+        
         # Show yolo stream
         if config["show_stream"]:
             cv2.namedWindow("image", cv2.WINDOW_NORMAL)
             cv2.imshow("image", image)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
+        
         # Save frame to output video
         if config["save_video"]:
             out.write(image)
@@ -85,4 +112,4 @@ finally:
     vid.release()
     cv2.destroyAllWindows()
     yolo.close_session()
-
+    bt.close()
