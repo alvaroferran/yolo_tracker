@@ -6,6 +6,7 @@ This project uses
 its base, and builds on it to send the coordinates of the detected object over
 serial port to a microcontroller for tracking.
 
+![](cat.png)
 
 ## Installation
 
