@@ -1,0 +1,12 @@
+# YOLO parameters
+class_to_detect: "cat"
+IOU_threshold: 0.45
+score_threshold: 0.3
+
+# Show video stream during execution
+show_stream: True
+
+# Save the processed video to a .mp4 video file
+save_video: False
+output_name: "out_video"
+output_fps: 4
